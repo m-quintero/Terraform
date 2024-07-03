@@ -1,5 +1,3 @@
-Here is your article formatted with GitHub Markdown:
-
 ## What exactly is Terraform and why should I care?
 
 In a nutshell, Terraform is an open-source infrastructure as code software (IaC) tool that allows you to define both cloud & on-prem resources in easy to read config files which you can version, reuse, & manage. Quit clicking things multiple times to do something repetitively!
