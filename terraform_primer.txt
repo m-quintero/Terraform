@@ -1,149 +1,314 @@
-Terraform Primer
+Here is your article formatted with GitHub Markdown:
 
-What exactly is Terraform and why should I care?
+## What exactly is Terraform and why should I care?
 
 In a nutshell, Terraform is an open-source infrastructure as code software (IaC) tool that allows you to define both cloud & on-prem resources in easy to read config files which you can version, reuse, & manage. Quit clicking things multiple times to do something repetitively!
 
-What can I use it for?
-    Version Control: Keep your Terraform configs in a VCS (githib) to track changes & manage collabs.
-    Modularization: Use modules to organize & reuse code for similar infra setups.
-    Secret Management: Avoid hardcoding sensitive stuff. Use env vars or secret management tools.
-    State Management: For team environments (like PCM), we can use remote state storage options like AWS S3 with locking via DynamoDB to handle state files safely.
-Getting started
+## What can I use it for?
 
-- Install Terraform: Download & install the Terraform CLI from the official Terraform website. See the next section!
+- **Version Control:** Keep your Terraform configs in a VCS (GitHub) to track changes & manage collabs.
+- **Modularization:** Use modules to organize & reuse code for similar infra setups.
+- **Secret Management:** Avoid hardcoding sensitive stuff. Use env vars or secret management tools.
+- **State Management:** For team environments (like PCM), we can use remote state storage options like AWS S3 with locking via DynamoDB to handle state files safely.
+
+## Getting started
+
+- **Install Terraform:** Download & install the Terraform CLI from the official Terraform website. See the next section!
 - For this article, we'll be using the AWS service provider, so ensure you have an AWS account and configure your access credentials!!!!
 
+### To install on a RHEL instance
 
-To install on a RHEL instance
- Expand source
+```bash
+sudo yum install -y yum-utils
+sudo yum-config-manager --add-repo https://rpm.releases.hashicorp.com/RHEL/hashicorp.repo
+sudo yum -y install terraform
+```
 
+### To install on an Ubuntu/Debian instance
 
-To install on an Ubuntu/Debian instance
- Expand source
+```bash
+wget -O- https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+sudo apt update && sudo apt install terraform
+```
 
+Build a directory for the project. It's good practice to organize your Terraform projects in separate directories. This helps when managing different environments or configurations...keeping them independent and organized. I'm going to use the following structure (this is up to you, but I want to roll it this way):
 
-Build a directory for the project. It's good practice to organize your Terraform projects in separate directories. This helps when managing different environments or configurations...keeping them independent and organized. 
-I'm going to use the following structure (this is up to you, but I want to roll it this way); 
+- `terraform/` as the root folder within the current account's home dir
+- `terraform/terraform_aws/` as the service provider folder for AWS stuff
+- `terraform/terraform_aws/terraform_aws_ec2_builder/` for the specific EC2 build config
 
-    terraform/ as the root folder within the current account's home dir
-    terraform/terraform_aws/ as the service provider folder for aws stuff
-    terraform/terraform_aws/terraform_aws_ec2_builder/ for the specific ec2 build config
+```bash
+mkdir -p terraform/terraform_aws/terraform_aws_ec2_builder && cd terraform/terraform_aws/terraform_aws_ec2_builder
+```
 
+Create the config. For the sake of this article, I'll refer to them as blueprints. For this example, we'll go with `ec2_builder.tf`. A common name for this file could be `main.tf`. But I'm a rebel. `vim ec2_builder.tf` it is!
 
- Expand source
+The `terraform.tfstate` file is automatically generated & maintains the state of your managed infrastructure. Maintains all the resources which this job was in control of i.e. EC2 instances, etc. Think of it as a snapshot of the state of affairs in regards to what this blueprint has done.
 
+Below, I have created some example .tf files (Blueprints), which contain the actual resource definitions. You can adjust these as necessary (provider, region, resource, count, ami, instance_type, and tags if needed).
 
-Create the config. For the sake of this article, I'll refer to them as blueprints. For this example, we'll go with 'ec2_builder.tf'. A common name for this file could be main.tf. But I'm a rebel. vim ec2_builder.tf it is!
+### Example Blueprint 1 - CREATE A SINGLE EC2 INSTANCE
 
-The terraform.tfstate file is automatically generated & maintains the state of your managed infrastructure. Maintains all the resources which this job was in control of i.e. ec2 instances, etc. Think of it as a snapshot of the state of affairs in regards to what this blueprint has done.
+```hcl
+##################################
+## CREATE A SINGLE EC2 INSTANCE ##
+##################################
 
-Below, I have created some example .tf files (Blueprints), which contain the actual resource definitions. 
-You can adjust these as necessary (provider, region, resource, count, ami, instance_type, and tags if needed).
+provider "aws" {
+  region = "us-east-1"
+}
 
+resource "aws_instance" "Tester" {
+  count         = 5 
+  ami           = "ami-04ff98ccbfa41c9ad"  # Example AMI ID, replace with a valid one
+  instance_type = "t2.micro"
 
-Example Blueprint  1 - CREATE A SINGLE EC2 INSTANCE
- Expand source
+  tags = {
+    Name = "Tester"
+  }
+}
+```
 
+### Example Blueprint 2 - CREATE 5 INSTANCES, ADD AN ADDITIONAL EBS VOLUME TO EACH NEWLY CREATED INSTANCE
 
-Example Blueprint 2 - CREATE 5 INSTANCES, ADD AN ADDITIONAL EBS VOLUME TO EACH NEWLY CREATED INSTANCE
- Expand source
+```hcl
+######################################################################################################
+## CREATE 5 INSTANCES IN us-east-1, ADD ADD AN ADDITIONAL EBS VOLUME TO EACH NEWLY CREATED INSTANCE ##
+######################################################################################################
 
+provider "aws" {
+  region = "us-east-1"
+}
 
-Example Blueprint 3 - CHECK INSTANCES IN A GIVEN REGION
- Expand source
+resource "aws_instance" "example" {
+  count         = 5  # pops 5 instances
+  ami           = "ami-04ff98ccbfa41c9ad"
+  instance_type = "t2.micro"
 
+  tags = {
+    Name = "Instance-${count.index}" # count.index used for incrementing tag names
+  }
+}
 
-Doing the thing!
+resource "aws_ebs_volume" "example_ebs" {
+  count              = 5  # popping 5 EBS volumes
+  availability_zone  = aws_instance.example[count.index].availability_zone
+  size               = 8  # size of EBS volume in GiB
+
+  tags = {
+    Name = "EBS-Volume-${count.index}"
+  }
+}
+
+resource "aws_volume_attachment" "ebs_att" {
+  count       = 5
+  device_name = "/dev/sdh" # adjust device name as you see fit
+  volume_id   = aws_ebs_volume.example_ebs[count.index].id
+  instance_id = aws_instance.example[count.index].id
+}
+```
+
+### Example Blueprint 3 - CHECK INSTANCES IN A GIVEN REGION
+
+```hcl
+#######################################
+## CHECK INSTANCES IN A GIVEN REGION ##
+#######################################
+
+provider "aws" {
+  region = "us-east-1"
+}
+
+data "aws_instances" "all" {
+  # Optionally, you can filter instances based on tags, instance states, etc.
+  # Example filter to get only running instances:
+  # filter {
+  #   name   = "instance-state-name"
+  #   values = ["running"]
+  # }
+}
+
+output "instance_ids" {
+  value = data.aws_instances.all.ids
+}
+```
+
+## Doing the thing!
 
 These are the steps to get the job done and a brief explanation of what each command is doing:
 
-    terraform init              <== only needed the first time. Here we initialize Terraform and download the necessary provider plugins.
-    terraform validate       <== useful for verifying whether a set of Terraform configuration files is syntactically valid and internally consistent, without accessing any remote services (like cloud APIs)
-    terraform plan              <== tells you what actions Terraform will perform before making any changes to real resources.
-    terraform apply            <==  terraform creates the resources as per the blueprints. confirm the action(s) by typing yes when asked.
-    terraform destroy        <== if you need to update your setup, modify the main.tf file and run terraform apply again.
+- `terraform init` <== only needed the first time. Here we initialize Terraform and download the necessary provider plugins.
+- `terraform validate` <== useful for verifying whether a set of Terraform configuration files is syntactically valid and internally consistent, without accessing any remote services (like cloud APIs)
+- `terraform plan` <== tells you what actions Terraform will perform before making any changes to real resources.
+- `terraform apply` <==  terraform creates the resources as per the blueprints. confirm the action(s) by typing yes when asked.
+- `terraform destroy` <== if you need to update your setup, modify the `main.tf` file and run `terraform apply` again.
 
-CLEAN UP YOUR MESS WHERE APPLICABLE
+**BE SURE TO `terraform destroy` IF YOU WILL NOT BE USING THESE RESOURCES FURTHER, AS IN TESTING! YOU WILL GET A BIG BILL OTHERWISE**
 
-BE SURE TO TERRAFORM DESTROY IF YOU WILL NOT BE USING THESE RESOURCES FURTHER, AS IN TESTING! YOU WILL GET A BIG BILL OTHERWISE
-Let's dig a little further!
+## Let's dig a little further!
 
-What's the purpose and/or benefit of .tfvars files? 
+### What's the purpose and/or benefit of .tfvars files?
+
 It's used to define variables that can be passed into your Terraform configuration. This method allows you to separate configuration data (like credentials, settings, or environment-specific parameters) from your main configuration logic, making your infrastructure as code more modular, reusable, and maintainable.
 
 In short, some purposes and benefits are as follows:
 
-    Flexibility: By using .tfvars files, you can adjust the params that control your deployments without altering the core config files. This is particularly useful for managing different environments (like development, staging, and production) or regions.
-    Security: Keep sensitive information (like secrets or keys) out of your main config files.
-    Organization: Maintain a clean and organized codebase by separating variable definitions from the main configuration logic.
+- **Flexibility:** By using .tfvars files, you can adjust the params that control your deployments without altering the core config files. This is particularly useful for managing different environments (like development, staging, and production) or regions.
+- **Security:** Keep sensitive information (like secrets or keys) out of your main config files.
+- **Organization:** Maintain a clean and organized codebase by separating variable definitions from the main configuration logic.
 
+Let's continue with the AWS service provider, specifically EC2 instances for some good examples. You can use a .tfvars file to specify the number of instances, their types, AMIs, & any other configurable params.
 
-Let's continue with the AWS service provider, specifically ec2 instances for some good examples. You can use a .tfvars file to specify the number of instances, their types, AMIs, & any other configurable params.
+First, in your main Terraform configuration file (e.g., `main.tf`), define the variables that you will set values for in your .tfvars file.
 
-First, in your main Terraform configuration file (e.g., main.tf), define the variables that you will set values for in your .tfvars file.
- Expand source
+```hcl
+variable "instance_count" {
+  description = "Number of EC2 instances to create"
+  type        = number
+}
 
+variable "instance_ami" {
+  description = "AMI ID for the EC2 instances"
+  type        = string
+}
 
-Create a file named terraform.tfvars or any other descriptive name with a .tfvars extension (e.g., production.tfvars). In this file, specify the values for the variables you’ve defined in your configuration.
- Expand source
+variable "instance_type" {
+  description = "Type of EC2 instance to deploy"
+  type        = string
+}
+```
 
+Create a file named `terraform.tfvars` or any other descriptive name with a .tfvars extension (e.g., `production.tfvars`). In this file, specify the values for the variables you’ve defined in your configuration.
 
-In your resource definitions in the main.tf file, use these variables:
- Expand source
+```hcl
+instance_count = 5
+instance_ami = "ami-04ff98ccbfa41c9ad"
+instance_type = "t2.micro"
+```
 
+In your resource definitions in the `main.tf` file, use these variables:
 
-When running commands such as 'terraform plan' or 'terraform apply', Terraform will automatically load variables from a file named terraform.tfvars (or any .auto.tfvars file).
+```hcl
+provider "aws" {
+  region = "us-east-1"
+}
 
-If you named your .tfvars file differently, you can explicitly specify it with the -var-file option:
- Expand source
+resource "aws_instance" "example" {
+  count         = var.instance_count
+  ami           = var.instance_ami
+  instance_type = var.instance_type
 
+  tags = {
+    Name = "Instance-${count.index}"
+  }
+}
+```
 
-Good Tips
+When running commands such as `terraform plan` or `terraform apply`, Terraform will automatically load variables from a file named `terraform.tfvars` (or any `.auto.tfvars` file).
+
+If you named your .tfvars file differently, you can explicitly specify it with the `-var-file` option:
+
+```bash
+terraform apply -var-file="production.tfvars"
+``
+
+`
+
+### Good Tips
 
 - Keep .tfvars files out of version control if they contain sensitive data. Use a secure method to manage these files, or consider using Terraform Cloud or Enterprise for sensitive data management.
 - Use multiple .tfvars files for different environments to keep your configurations clean and environment-specific.
-- Documentation: Document the purpose of each variable and the expected values, especially if working within a team.
+- **Documentation:** Document the purpose of each variable and the expected values, especially if working within a team.
 
+### What's a locals block used for?
 
-What's a locals block used for?
-A locals block is used to define local variables within your Terraform config. They help to define expressions that you can reference multiple times throughout your Terraform code, helping to keep your config DRY (Don't Repeat Yourself) (tongue)
+A locals block is used to define local variables within your Terraform config. They help to define expressions that you can reference multiple times throughout your Terraform code, helping to keep your config DRY (Don't Repeat Yourself).
 
 Benefits of using a locals block:
 
-    Simple: Simplifies expressions that are used multiple times, reducing potential errors and making the codebase easier to maintain.
-    Easy on the Eyes: Improves the readability of your code by replacing complex or lengthy expressions with a single, descriptive name.
-    Manageability: Helps in managing variations between different environments (e.g., dev, staging, production) by centralizing the configuration that changes.
+- **Simple:** Simplifies expressions that are used multiple times, reducing potential errors and making the codebase easier to maintain.
+- **Easy on the Eyes:** Improves the readability of your code by replacing complex or lengthy expressions with a single, descriptive name.
+- **Manageability:** Helps in managing variations between different environments (e.g., dev, staging, production) by centralizing the configuration that changes.
 
+In your Terraform configuration file (e.g., `main.tf`), you can define a locals block like this:
 
-In your Terraform configuration file (e.g., main.tf), you can define a locals block like this:
- Expand source
+```hcl
+locals {
+  common_tags = {
+    Owner       = "Network Team"
+    Environment = "Production"
+  }
 
+  instance_name_prefix = "prod-instance"
+}
+```
 
-In the previous example, 'common_tags' is a map that includes tags which might be applied to various resources to ensure they are consistently labeled across your infra. The 'instance_name_prefix' is a string that might be used to prefix the names of instances or other resources.
+In the previous example, `common_tags` is a map that includes tags which might be applied to various resources to ensure they are consistently labeled across your infra. The `instance_name_prefix` is a string that might be used to prefix the names of instances or other resources.
 
 You can use these local variables anywhere in your Terraform configuration. Here's how you might use them when defining an AWS EC2 instance:
- Expand source
 
+```hcl
+resource "aws_instance" "example" {
+  ami           = "ami-04ff98ccbfa41c9ad"
+  instance_type = "t2.micro"
+  count         = 5
 
-Speaking of tags, what is their usage here?
+  tags = merge(
+    {
+      Name = "${local.instance_name_prefix}-${count.index}"
+    },
+    local.common_tags
+  )
+}
+```
 
-They combine the common_tags with a Name tag specific to each instance, utilizing Terraform’s merge function to combine maps. The instance name includes a prefix from the locals block, demonstrating how locals can be used to standardize resource naming conventions.
+### Speaking of tags, what is their usage here?
 
+They combine the `common_tags` with a Name tag specific to each instance, utilizing Terraform’s merge function to combine maps. The instance name includes a prefix from the locals block, demonstrating how locals can be used to standardize resource naming conventions.
 
 Let's say you're managing an environment where certain settings vary slightly between development, staging, and production. You could use local variables to cleanly manage those differences:
- Expand source
+
+```hcl
+locals {
+  environment_settings = {
+    "dev" = {
+      instance_type = "t2.micro"
+      instance_count = 2
+    }
+    "prod" = {
+      instance_type = "t2.medium"
+      instance_count = 5
+    }
+  }
+
+  environment = "prod"  # This could be dynamically set via CLI or environment variables
+  instance_settings = local.environment_settings[local.environment]
+}
+
+resource "aws_instance" "app" {
+  count         = local.instance_settings.instance_count
+  ami           = "ami-04ff98ccbfa41c9ad"
+  instance_type = local.instance_settings.instance_type
+
+  tags = {
+    Environment = local.environment
+  }
+}
+```
 
 Within this configuration:
 
-    environment_settings contains different settings for dev and prod environments
-    environment is used to select the appropriate environment settings dynamically
-    instance_settings extracts the correct settings based on the environment
+- `environment_settings` contains different settings for dev and prod environments
+- `environment` is used to select the appropriate environment settings dynamically
+- `instance_settings` extracts the correct settings based on the environment
 
 By using locals in this way, you can maintain a single codebase that adapts to different environments without duplicating logic or creating separate files for each environment. This helps to better keep your configs scalable & workable!
 
-Further Reading
+## Further Reading
 
-https://developer.hashicorp.com/terraform/install?ajs_aid=e307840e-2f3d-4b4b-82d9-5fde8429cc36&product_intent=terraform
-https://developer.hashicorp.com/tutorials/library?product=terraform
-https://developer.hashicorp.com/well-architected-framework/operational-excellence/operational-excellence-enable-teams
+- [Terraform Install Documentation](https://developer.hashicorp.com/terraform/install?ajs_aid=e307840e-2f3d-4b4b-82d9-5fde8429cc36&product_intent=terraform)
+- [Terraform Tutorials](https://developer.hashicorp.com/tutorials/library?product=terraform)
+- [Operational Excellence Enable Teams](https://developer.hashicorp.com/well-architected-framework/operational-excellence/operational-excellence-enable-teams)
+
+This GitHub Markdown format should make your article easier to read and navigate within GitHub.
